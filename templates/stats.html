@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistics - GoShort</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Statistics</h1>
+            <p class="subtitle">Click analytics for your short URLs</p>
+        </header>
+
+        <main>
+            <section class="stats-summary">
+                <div class="stat-card">
+                    <h3>Total URLs</h3>
+                    <p id="totalURLs" class="stat-value">-</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Clicks</h3>
+                    <p id="totalClicks" class="stat-value">-</p>
+                </div>
+            </section>
+
+            <section class="url-list">
+                <h2>All URLs</h2>
+                <div id="urlsContainer">
+                    <p class="loading">Loading...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <a href="/">← Back to Home</a>
+        </footer>
+    </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/urls');
+                const data = await response.json();
+
+                document.getElementById('totalURLs').textContent = data.total || 0;
+
+                const totalClicks = (data.urls || []).reduce((sum, url) => sum + url.clicks, 0);
+                document.getElementById('totalClicks').textContent = totalClicks;
+
+                const container = document.getElementById('urlsContainer');
+                if (data.urls && data.urls.length > 0) {
+                    container.innerHTML = data.urls.map(url => `
+                        <div class="url-item stat-row">
+                            <div class="url-info">
+                                <a href="/r/${url.code}" target="_blank">${url.short_url}</a>
+                                <span class="original">${url.original_url}</span>
+                                <span class="created">Created: ${new Date(url.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <div class="url-stats">
+                                <span class="clicks big">${url.clicks} clicks</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p class="empty">No URLs yet.</p>';
+                }
+            } catch (err) {
+                document.getElementById('urlsContainer').innerHTML = '<p class="error">Failed to load statistics</p>';
+            }
+        }
+
+        loadStats();
+    </script>
+</body>
+</html>

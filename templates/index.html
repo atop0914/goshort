@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoShort - URL Shortener</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔗 GoShort</h1>
+            <p class="subtitle">Lightweight URL Shortener</p>
+        </header>
+
+        <main>
+            <section class="create-form">
+                <h2>Create Short URL</h2>
+                <form id="shortenForm">
+                    <div class="form-group">
+                        <label for="url">Original URL</label>
+                        <input type="url" id="url" name="url" placeholder="https://example.com/very/long/url" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="customCode">Custom Code (optional)</label>
+                        <input type="text" id="customCode" name="custom_code" placeholder="my-link" pattern="[0-9A-Za-z]+">
+                        <small>Alphanumeric only, max 32 characters</small>
+                    </div>
+                    <button type="submit">Create Short URL</button>
+                </form>
+                <div id="result" class="result hidden"></div>
+            </section>
+
+            <section class="url-list">
+                <h2>Recent URLs</h2>
+                <div id="urlsContainer">
+                    <p class="loading">Loading...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <a href="/stats">View Statistics →</a>
+        </footer>
+    </div>
+
+    <script>
+        const form = document.getElementById('shortenForm');
+        const result = document.getElementById('result');
+        const urlsContainer = document.getElementById('urlsContainer');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = document.getElementById('url').value;
+            const customCode = document.getElementById('customCode').value;
+
+            result.classList.add('hidden');
+            result.className = 'result';
+
+            try {
+                const body = { url };
+                if (customCode) body.custom_code = customCode;
+
+                const response = await fetch('/api/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    result.textContent = `Error: ${data.message || data.error}`;
+                    result.classList.add('error');
+                } else {
+                    result.innerHTML = `
+                        <strong>Short URL created!</strong><br>
+                        <a href="${data.short_url}" target="_blank">${data.short_url}</a>
+                    `;
+                    result.classList.add('success');
+                    form.reset();
+                    loadURLs();
+                }
+                result.classList.remove('hidden');
+            } catch (err) {
+                result.textContent = `Network error: ${err.message}`;
+                result.classList.add('error', 'hidden');
+                result.classList.remove('hidden');
+            }
+        });
+
+        async function loadURLs() {
+            try {
+                const response = await fetch('/api/urls');
+                const data = await response.json();
+
+                if (data.urls && data.urls.length > 0) {
+                    urlsContainer.innerHTML = data.urls.map(url => `
+                        <div class="url-item">
+                            <div class="url-info">
+                                <a href="${url.short_url}" target="_blank">${url.short_url}</a>
+                                <span class="original">${url.original_url}</span>
+                            </div>
+                            <div class="url-stats">
+                                <span class="clicks">${url.clicks} clicks</span>
+                                <button onclick="deleteURL('${url.code}')" class="delete-btn">Delete</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    urlsContainer.innerHTML = '<p class="empty">No URLs yet. Create your first one above!</p>';
+                }
+            } catch (err) {
+                urlsContainer.innerHTML = '<p class="error">Failed to load URLs</p>';
+            }
+        }
+
+        async function deleteURL(code) {
+            if (!confirm('Delete this short URL?')) return;
+
+            try {
+                const response = await fetch(`/api/urls/${code}`, { method: 'DELETE' });
+                if (response.ok) {
+                    loadURLs();
+                } else {
+                    alert('Failed to delete URL');
+                }
+            } catch (err) {
+                alert('Network error');
+            }
+        }
+
+        loadURLs();
+    </script>
+</body>
+</html>
