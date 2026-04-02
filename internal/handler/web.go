@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	"goshort/internal/store"
+	"github.com/goshort/goshort/internal/store"
 )
 
 // WebHandler handles web UI requests
@@ -13,9 +13,9 @@ type WebHandler struct {
 }
 
 // NewWebHandler creates a new web handler
-func NewWebHandler(store *store.MemoryStore, baseURL string) *WebHandler {
+func NewWebHandler(s *store.MemoryStore, baseURL string) *WebHandler {
 	return &WebHandler{
-		store:   store,
+		store:   s,
 		baseURL: baseURL,
 	}
 }

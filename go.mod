@@ -1,5 +1,5 @@
-module goshort
+module github.com/goshort/goshort
 
-go 1.25.3
+go 1.21
 
 require github.com/gorilla/mux v1.8.1

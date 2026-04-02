@@ -2,14 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
-
-	"goshort/config"
-	"goshort/internal/handler"
-	"goshort/internal/store"
+	"github.com/goshort/goshort/config"
+	"github.com/goshort/goshort/internal/handler"
 )
 
 func main() {
@@ -17,44 +17,40 @@ func main() {
 	flag.Parse()
 
 	// Load configuration
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		log.Printf("Warning: Failed to load config: %v, using defaults", err)
-		cfg = config.DefaultConfig()
+	var cfg *config.Config
+	if _, err := os.Stat(*configPath); err == nil {
+		cfg, err = config.Load(*configPath)
+		if err != nil {
+			log.Fatalf("Failed to load config: %v", err)
+		}
+		log.Printf("Loaded config from %s", *configPath)
+	} else {
+		cfg = config.Default()
+		log.Println("Using default configuration")
 	}
 
-	// Initialize shared store
-	urlStore := store.NewMemoryStore()
-
-	// Initialize handlers
-	apiHandler := handler.NewAPIHandler(urlStore, cfg.BaseURL, cfg.ExpiryHours)
-	webHandler := handler.NewWebHandler(urlStore, cfg.BaseURL)
+	// Create API handler
+	apiHandler := handler.NewAPIHandler(cfg.BaseURL, cfg.ExpiryHours)
 
 	// Setup router
-	r := mux.NewRouter()
+	router := mux.NewRouter()
 
 	// API routes
-	r.HandleFunc("/api/shorten", apiHandler.Shorten).Methods(http.MethodPost)
-	r.HandleFunc("/api/urls", apiHandler.List).Methods(http.MethodGet)
-	r.HandleFunc("/api/stats/{code}", apiHandler.Stats).Methods(http.MethodGet)
-	r.HandleFunc("/api/urls/{code}", apiHandler.Delete).Methods(http.MethodDelete)
+	router.HandleFunc("/api/shorten", apiHandler.HandleShorten).Methods("POST")
+	router.HandleFunc("/api/urls", apiHandler.HandleList).Methods("GET")
+	router.HandleFunc("/api/urls/{code}", apiHandler.HandleDelete).Methods("DELETE")
+	router.HandleFunc("/api/stats/{code}", apiHandler.HandleStats).Methods("GET")
 
 	// Redirect route
-	r.HandleFunc("/r/{code}", apiHandler.Redirect).Methods(http.MethodGet)
+	router.HandleFunc("/r/{code}", apiHandler.HandleRedirect).Methods("GET")
 
-	// Web UI routes
-	r.HandleFunc("/", webHandler.Index).Methods(http.MethodGet)
-	r.HandleFunc("/stats", webHandler.Stats).Methods(http.MethodGet)
+	// Health check
+	router.HandleFunc("/health", apiHandler.HealthCheck).Methods("GET")
 
-	// Static files
-	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir("static")))
-	r.PathPrefix("/static/").Handler(staticHandler)
-
-	addr := cfg.Host + ":" + string(rune(cfg.Port))
-	log.Printf("GoShort starting on %s", addr)
-	log.Printf("Base URL: %s", cfg.BaseURL)
-
-	if err := http.ListenAndServe(addr, r); err != nil {
+	// Start server
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	log.Printf("Starting GoShort server on %s", addr)
+	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
