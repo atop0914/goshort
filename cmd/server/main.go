@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/gorilla/mux"
 	"github.com/goshort/goshort/config"
@@ -29,8 +30,18 @@ func main() {
 		log.Println("Using default configuration")
 	}
 
+	// Get absolute paths for templates and static files
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatalf("Failed to get executable path: %v", err)
+	}
+	baseDir := filepath.Dir(exePath)
+
 	// Create API handler
 	apiHandler := handler.NewAPIHandler(cfg.BaseURL, cfg.ExpiryHours)
+
+	// Create web handler
+	webHandler := handler.NewWebHandler(baseDir)
 
 	// Setup router
 	router := mux.NewRouter()
@@ -46,6 +57,14 @@ func main() {
 
 	// Health check
 	router.HandleFunc("/health", apiHandler.HealthCheck).Methods("GET")
+
+	// Web UI routes
+	router.HandleFunc("/", webHandler.Index).Methods("GET")
+	router.HandleFunc("/stats", webHandler.Stats).Methods("GET")
+
+	// Static files
+	staticDir := filepath.Join(baseDir, "static")
+	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

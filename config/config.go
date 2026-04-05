@@ -3,26 +3,39 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Config represents the application configuration
 type Config struct {
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	BaseURL     string `json:"base_url"`
-	ExpiryHours int    `json:"expiry_hours"`
+	Host        string `json:"host" yaml:"host"`
+	Port        int    `json:"port" yaml:"port"`
+	BaseURL     string `json:"base_url" yaml:"base_url"`
+	ExpiryHours int    `json:"expiry_hours" yaml:"expiry_hours"`
 }
 
-// Load reads configuration from a JSON file
+// Load reads configuration from a JSON or YAML file
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
+	ext := strings.ToLower(filepath.Ext(path))
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
+
+	if ext == ".yaml" || ext == ".yml" {
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return nil, err
+		}
+	} else {
+		// Default to JSON
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return nil, err
+		}
 	}
 
 	return &cfg, nil
