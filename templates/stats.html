@@ -26,7 +26,7 @@
             </section>
 
             <section class="url-list">
-                <h2>All URLs</h2>
+                <h2>All URLs <span id="urlCount" class="url-count"></span></h2>
                 <div id="urlsContainer">
                     <p class="loading">Loading...</p>
                 </div>
@@ -38,37 +38,77 @@
         </footer>
     </div>
 
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <script>
+        const toastContainer = document.getElementById('toastContainer');
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
         async function loadStats() {
             try {
                 const response = await fetch('/api/urls');
                 const data = await response.json();
 
-                document.getElementById('totalURLs').textContent = data.total || 0;
+                const total = data.total || 0;
+                document.getElementById('totalURLs').textContent = total;
 
-                const totalClicks = (data.urls || []).reduce((sum, url) => sum + url.clicks, 0);
+                const urls = data.urls || [];
+                const totalClicks = urls.reduce((sum, url) => sum + (url.clicks || 0), 0);
                 document.getElementById('totalClicks').textContent = totalClicks;
 
                 const container = document.getElementById('urlsContainer');
-                if (data.urls && data.urls.length > 0) {
-                    container.innerHTML = data.urls.map(url => `
-                        <div class="url-item stat-row">
+                const countSpan = document.getElementById('urlCount');
+
+                if (urls.length > 0) {
+                    countSpan.textContent = `(${urls.length})`;
+                    // Sort by clicks descending
+                    urls.sort((a, b) => (b.clicks || 0) - (a.clicks || 0));
+
+                    container.innerHTML = urls.map((url, index) => `
+                        <div class="url-item stat-row ${index === 0 && url.clicks > 0 ? 'top-url' : ''}">
+                            <div class="url-rank">${index + 1}</div>
                             <div class="url-info">
-                                <a href="/r/${url.code}" target="_blank">${url.short_url}</a>
-                                <span class="original">${url.original_url}</span>
-                                <span class="created">Created: ${new Date(url.created_at).toLocaleDateString()}</span>
+                                <a href="/r/${url.code}" target="_blank" class="short-link">${url.short_url}</a>
+                                <span class="original" title="${escapeHtml(url.original_url)}">${escapeHtml(url.original_url)}</span>
+                                <span class="created">Created: ${formatDate(url.created_at)}</span>
+                                ${url.expires_at ? `<span class="expires">Expires: ${formatDate(url.expires_at)}</span>` : ''}
                             </div>
                             <div class="url-stats">
-                                <span class="clicks big">${url.clicks} clicks</span>
+                                <span class="clicks big" title="${url.clicks} clicks">${url.clicks} clicks</span>
                             </div>
                         </div>
                     `).join('');
                 } else {
-                    container.innerHTML = '<p class="empty">No URLs yet.</p>';
+                    countSpan.textContent = '';
+                    container.innerHTML = '<p class="empty">No URLs yet. <a href="/">Create one!</a></p>';
                 }
             } catch (err) {
-                document.getElementById('urlsContainer').innerHTML = '<p class="error">Failed to load statistics</p>';
+                document.getElementById('urlsContainer').innerHTML = '<p class="error">❌ Failed to load statistics</p>';
+                showToast('Failed to load statistics', 'error');
             }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
         loadStats();

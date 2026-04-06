@@ -23,10 +23,10 @@
                     </div>
                     <div class="form-group">
                         <label for="customCode">Custom Code (optional)</label>
-                        <input type="text" id="customCode" name="custom_code" placeholder="my-link" pattern="[0-9A-Za-z]+">
+                        <input type="text" id="customCode" name="custom_code" placeholder="my-link" pattern="[0-9A-Za-z]+" maxlength="32">
                         <small>Alphanumeric only, max 32 characters</small>
                     </div>
-                    <button type="submit">Create Short URL</button>
+                    <button type="submit" id="submitBtn">Create Short URL</button>
                 </form>
                 <div id="result" class="result hidden"></div>
             </section>
@@ -44,16 +44,55 @@
         </footer>
     </div>
 
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <script>
         const form = document.getElementById('shortenForm');
         const result = document.getElementById('result');
         const urlsContainer = document.getElementById('urlsContainer');
+        const submitBtn = document.getElementById('submitBtn');
+        const toastContainer = document.getElementById('toastContainer');
+
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+
+            // Trigger animation
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+            });
+
+            // Auto-dismiss after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Show inline result message
+        function showResult(message, isSuccess) {
+            result.textContent = message;
+            result.className = `result ${isSuccess ? 'success' : 'error'}`;
+            result.classList.remove('hidden');
+        }
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const url = document.getElementById('url').value;
-            const customCode = document.getElementById('customCode').value;
+            const url = document.getElementById('url').value.trim();
+            const customCode = document.getElementById('customCode').value.trim();
 
+            if (!url) {
+                showToast('Please enter a URL', 'error');
+                return;
+            }
+
+            // Disable button during request
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating...';
             result.classList.add('hidden');
             result.className = 'result';
 
@@ -70,26 +109,26 @@
                 const data = await response.json();
 
                 if (!response.ok) {
-                    result.textContent = `Error: ${data.message || data.error}`;
-                    result.classList.add('error');
+                    const errorMsg = data.message || data.error || 'Unknown error';
+                    showResult(`❌ ${errorMsg}`, false);
+                    showToast(`Failed: ${errorMsg}`, 'error');
                 } else {
-                    result.innerHTML = `
-                        <strong>Short URL created!</strong><br>
-                        <a href="${data.short_url}" target="_blank">${data.short_url}</a>
-                    `;
-                    result.classList.add('success');
+                    showResult(`✅ Short URL created! <a href="${data.short_url}" target="_blank">${data.short_url}</a>`, true);
+                    showToast('Short URL created successfully!', 'success');
                     form.reset();
                     loadURLs();
                 }
-                result.classList.remove('hidden');
             } catch (err) {
-                result.textContent = `Network error: ${err.message}`;
-                result.classList.add('error', 'hidden');
-                result.classList.remove('hidden');
+                showResult(`❌ Network error: ${err.message}`, false);
+                showToast('Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Short URL';
             }
         });
 
         async function loadURLs() {
+            urlsContainer.innerHTML = '<p class="loading">Loading...</p>';
             try {
                 const response = await fetch('/api/urls');
                 const data = await response.json();
@@ -98,38 +137,64 @@
                     urlsContainer.innerHTML = data.urls.map(url => `
                         <div class="url-item">
                             <div class="url-info">
-                                <a href="${url.short_url}" target="_blank">${url.short_url}</a>
-                                <span class="original">${url.original_url}</span>
+                                <a href="${url.short_url}" target="_blank" class="short-link">${url.short_url}</a>
+                                <span class="original" title="${escapeHtml(url.original_url)}">${escapeHtml(url.original_url)}</span>
+                                <span class="created">Created: ${formatDate(url.created_at)}</span>
                             </div>
                             <div class="url-stats">
-                                <span class="clicks">${url.clicks} clicks</span>
-                                <button onclick="deleteURL('${url.code}')" class="delete-btn">Delete</button>
+                                <span class="clicks" title="${url.clicks} clicks">${url.clicks} clicks</span>
+                                <button onclick="copyURL('${url.short_url}')" class="copy-btn" title="Copy">📋</button>
+                                <button onclick="deleteURL('${url.code}')" class="delete-btn" title="Delete">🗑️</button>
                             </div>
                         </div>
                     `).join('');
                 } else {
-                    urlsContainer.innerHTML = '<p class="empty">No URLs yet. Create your first one above!</p>';
+                    urlsContainer.innerHTML = '<p class="empty">No URLs yet. Create your first one above! 🚀</p>';
                 }
             } catch (err) {
-                urlsContainer.innerHTML = '<p class="error">Failed to load URLs</p>';
+                urlsContainer.innerHTML = '<p class="error">❌ Failed to load URLs</p>';
+                showToast('Failed to load URLs', 'error');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function copyURL(shortUrl) {
+            try {
+                await navigator.clipboard.writeText(shortUrl);
+                showToast('Copied to clipboard!', 'success');
+            } catch (err) {
+                showToast('Failed to copy', 'error');
             }
         }
 
         async function deleteURL(code) {
-            if (!confirm('Delete this short URL?')) return;
+            if (!confirm('Delete this short URL? This action cannot be undone.')) return;
 
             try {
                 const response = await fetch(`/api/urls/${code}`, { method: 'DELETE' });
                 if (response.ok) {
+                    showToast('URL deleted', 'success');
                     loadURLs();
                 } else {
-                    alert('Failed to delete URL');
+                    const data = await response.json();
+                    showToast(`Failed: ${data.message || 'Unknown error'}`, 'error');
                 }
             } catch (err) {
-                alert('Network error');
+                showToast('Network error', 'error');
             }
         }
 
+        // Initial load
         loadURLs();
     </script>
 </body>
