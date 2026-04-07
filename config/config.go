@@ -11,10 +11,12 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Host        string `json:"host" yaml:"host"`
-	Port        int    `json:"port" yaml:"port"`
-	BaseURL     string `json:"base_url" yaml:"base_url"`
-	ExpiryHours int    `json:"expiry_hours" yaml:"expiry_hours"`
+	Host           string `json:"host" yaml:"host"`
+	Port           int    `json:"port" yaml:"port"`
+	BaseURL        string `json:"base_url" yaml:"base_url"`
+	ExpiryHours    int    `json:"expiry_hours" yaml:"expiry_hours"`
+	RateLimitRate  int    `json:"rate_limit_rate" yaml:"rate_limit_rate"`   // requests per second
+	RateLimitCap   int    `json:"rate_limit_cap" yaml:"rate_limit_cap"`     // burst capacity
 }
 
 // Load reads configuration from a JSON or YAML file
@@ -44,9 +46,11 @@ func Load(path string) (*Config, error) {
 // Default returns the default configuration
 func Default() *Config {
 	return &Config{
-		Host:        "0.0.0.0",
-		Port:        8080,
-		BaseURL:     "http://localhost:8080",
-		ExpiryHours: 720, // 30 days
+		Host:          "0.0.0.0",
+		Port:          8080,
+		BaseURL:       "http://localhost:8080",
+		ExpiryHours:   720, // 30 days
+		RateLimitRate: 10,  // 10 requests per second
+		RateLimitCap:  20,  // burst of 20
 	}
 }

@@ -3,40 +3,34 @@ package store
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goshort/goshort/internal/model"
 )
 
 var (
-	ErrNotFound      = errors.New("URL not found")
-	ErrCodeExists    = errors.New("code already exists")
-	ErrCodeExpired   = errors.New("URL has expired")
-	ErrInvalidURL    = errors.New("invalid URL")
-	ErrEmptyURL      = errors.New("URL cannot be empty")
+	ErrNotFound    = errors.New("URL not found")
+	ErrCodeExists  = errors.New("code already exists")
+	ErrCodeExpired = errors.New("URL has expired")
+	ErrInvalidURL  = errors.New("invalid URL")
+	ErrEmptyURL    = errors.New("URL cannot be empty")
 )
 
 // MemoryStore is a thread-safe in-memory store for URL records
 type MemoryStore struct {
-	mu    sync.RWMutex
-	urls  map[string]*model.URLRecord
-	index int64 // Counter for generating sequential IDs
+	mu         sync.RWMutex
+	urls       map[string]*model.URLRecord
+	urlIndex   map[string]string // originalURL -> code mapping for fast lookup
+	expiryList []*model.URLRecord // sorted by expiration for cleanup
 }
 
 // NewMemoryStore creates a new MemoryStore instance
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		urls:  make(map[string]*model.URLRecord),
-		index: 0,
+		urls:     make(map[string]*model.URLRecord),
+		urlIndex: make(map[string]string),
 	}
-}
-
-// nextID generates the next sequential ID
-func (s *MemoryStore) nextID() int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.index++
-	return s.index
 }
 
 // Create adds a new URL record to the store
@@ -63,6 +57,7 @@ func (s *MemoryStore) Create(code, originalURL string, expiresAt *time.Time) (*m
 	}
 
 	s.urls[code] = record
+	s.urlIndex[originalURL] = code
 	return record, nil
 }
 
@@ -85,26 +80,33 @@ func (s *MemoryStore) Get(code string) (*model.URLRecord, error) {
 }
 
 // IncrementClicks increments the click counter for a URL
+// Uses atomic for better performance under contention
 func (s *MemoryStore) IncrementClicks(code string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	s.mu.RLock()
 	record, exists := s.urls[code]
+	s.mu.RUnlock()
+
 	if !exists {
 		return ErrNotFound
 	}
 
-	record.Clicks++
+	// Use atomic to avoid write lock contention
+	atomic.AddInt64(&record.Clicks, 1)
 	return nil
 }
 
-// List returns all URL records
+// List returns all non-expired URL records
 func (s *MemoryStore) List() []model.URLRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	now := time.Now()
 	records := make([]model.URLRecord, 0, len(s.urls))
 	for _, record := range s.urls {
+		// Skip expired records
+		if record.ExpiresAt != nil && now.After(*record.ExpiresAt) {
+			continue
+		}
 		records = append(records, *record)
 	}
 	return records
@@ -115,10 +117,13 @@ func (s *MemoryStore) Delete(code string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.urls[code]; !exists {
+	record, exists := s.urls[code]
+	if !exists {
 		return ErrNotFound
 	}
 
+	// Remove from index
+	delete(s.urlIndex, record.OriginalURL)
 	delete(s.urls, code)
 	return nil
 }
@@ -131,19 +136,24 @@ func (s *MemoryStore) Exists(code string) bool {
 	return exists
 }
 
-// GetByOriginalURL finds a URL record by original URL
+// GetByOriginalURL finds a URL record by original URL using index
 func (s *MemoryStore) GetByOriginalURL(originalURL string) (*model.URLRecord, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	code, found := s.urlIndex[originalURL]
+	if !found {
+		s.mu.RUnlock()
+		return nil, ErrNotFound
+	}
+	record := s.urls[code]
+	s.mu.RUnlock()
 
-	for _, record := range s.urls {
-		if record.OriginalURL == originalURL {
-			// Check expiration
-			if record.ExpiresAt != nil && time.Now().After(*record.ExpiresAt) {
-				continue
-			}
-			return record, nil
-		}
+	// Check expiration (outside lock for performance)
+	if record != nil && record.ExpiresAt != nil && time.Now().After(*record.ExpiresAt) {
+		return nil, ErrCodeExpired
+	}
+
+	if record != nil {
+		return record, nil
 	}
 	return nil, ErrNotFound
 }
@@ -161,3 +171,4 @@ func (s *MemoryStore) GenerateUniqueCode(shortener interface{ Generate() (string
 	}
 	return "", errors.New("failed to generate unique code after 100 attempts")
 }
+

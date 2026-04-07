@@ -16,17 +16,19 @@ type URLRecord struct {
 
 // ShortenRequest represents the API request to create a short URL
 type ShortenRequest struct {
-	URL        string `json:"url"`
-	CustomCode string `json:"custom_code,omitempty"`
+	URL         string `json:"url"`
+	CustomCode  string `json:"custom_code,omitempty"`
+	ExpiryHours *int   `json:"expiry_hours,omitempty"` // Optional custom expiration
 }
 
 // ShortenResponse represents the API response after creating a short URL
 type ShortenResponse struct {
-	ShortURL    string    `json:"short_url"`
-	Code        string    `json:"code"`
-	OriginalURL string    `json:"original_url"`
-	CreatedAt  time.Time `json:"created_at"`
-	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	ShortURL    string     `json:"short_url"`
+	Code        string     `json:"code"`
+	OriginalURL string     `json:"original_url"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+	IsDuplicate bool       `json:"is_duplicate,omitempty"` // True if URL already existed
 }
 
 // URLListResponse represents the response for listing URLs

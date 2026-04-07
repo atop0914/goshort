@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/goshort/goshort/config"
@@ -37,8 +38,22 @@ func main() {
 	}
 	baseDir := filepath.Dir(exePath)
 
-	// Create API handler
-	apiHandler := handler.NewAPIHandler(cfg.BaseURL, cfg.ExpiryHours)
+	// Create API handler with rate limiting
+	rateLimitRate := cfg.RateLimitRate
+	if rateLimitRate <= 0 {
+		rateLimitRate = 10
+	}
+	rateLimitCap := cfg.RateLimitCap
+	if rateLimitCap <= 0 {
+		rateLimitCap = 20
+	}
+	apiHandler := handler.NewAPIHandlerWithRateLimit(
+		cfg.BaseURL,
+		cfg.ExpiryHours,
+		rateLimitRate,
+		time.Second,
+		rateLimitCap,
+	)
 
 	// Create web handler
 	webHandler := handler.NewWebHandler(baseDir)
