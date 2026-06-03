@@ -24,6 +24,7 @@ A lightweight, self-hosted URL shortener built with Go. No external dependencies
 ```bash
 # Download the latest release for your platform
 # https://github.com/yourusername/goshort/releases
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
 
 # Run directly
 ./goshort
